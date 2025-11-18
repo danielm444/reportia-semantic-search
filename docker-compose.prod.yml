@@ -1,0 +1,72 @@
+# Docker Compose para producción
+# API de Búsqueda Semántica MENU
+
+version: '3.8'
+
+services:
+  # Servicio principal de la API (producción)
+  menu-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runtime
+    container_name: menu-api-prod
+    ports:
+      - "80:8000"
+    volumes:
+      # Volumen persistente para ChromaDB
+      - chroma_data:/data/chroma_db
+      # Volumen para logs
+      - ./logs:/app/logs
+    environment:
+      - LOG_LEVEL=INFO
+      - HOST=0.0.0.0
+      - PORT=8000
+      - CHROMA_DB_PATH=/data/chroma_db
+    env_file:
+      - .env.production
+    restart: always
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    networks:
+      - menu-network
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+
+  # Proxy reverso (opcional)
+  nginx:
+    image: nginx:alpine
+    container_name: menu-nginx
+    ports:
+      - "443:443"
+      - "80:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+    depends_on:
+      - menu-api
+    restart: always
+    networks:
+      - menu-network
+    profiles:
+      - nginx
+
+# Volúmenes persistentes
+volumes:
+  chroma_data:
+    driver: local
+
+# Red personalizada
+networks:
+  menu-network:
+    driver: bridge

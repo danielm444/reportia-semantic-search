@@ -1,0 +1,33 @@
+# FastAPI y servidor
+fastapi==0.115.13
+uvicorn[standard]==0.31.1
+gunicorn==22.0.0
+
+# LangChain y componentes (versiones más recientes y compatibles)
+langchain==0.3.25
+langchain-openai==0.3.24
+langchain-community==0.3.25
+langchain-core==0.3.65
+
+# Base de datos vectorial
+# chromadb==1.2.1  # DEPRECATED - Removido. Migrado a Qdrant
+qdrant-client==1.7.3
+
+# OpenAI
+openai==1.100.2
+
+# Configuración y validación
+pydantic==2.11.7
+pydantic-settings==2.9.1
+python-dotenv==1.1.0
+
+# Logging estructurado
+structlog==25.4.0
+
+# CORS y middleware
+python-multipart==0.0.9
+
+# Utilidades
+typing-extensions==4.12.2
+numpy==1.26.4
+requests==2.32.3

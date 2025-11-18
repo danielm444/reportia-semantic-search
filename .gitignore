@@ -1,0 +1,66 @@
+# ── Python ─────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Entornos/vars locales
+.env*
+*.env*
+.env.*
+.venv/
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+
+# Paquetes/artefactos
+build/
+dist/
+downloads/
+.eggs/
+*.egg-info/
+*.egg
+pip-wheel-metadata/
+*.whl
+
+# PyInstaller
+*.spec
+
+# Pruebas / cobertura
+.pytest_cache/
+.tox/
+.nox/
+.coverage
+.coverage.*
+htmlcov/
+.cache/
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Logs
+*.log
+logs/
+
+# Datos locales (opcional: quitá estas líneas si querés versionarlos)
+data/
+*.sqlite3
+
+# ── VS Code / IDEs ────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.iml
+
+# ── SO ────────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+
+# ── Otros opcionales ──────────────────────────────────────────────────
+# Si usás pyenv y no querés fijar versión local en el repo:
+.python-version
+/.kiro

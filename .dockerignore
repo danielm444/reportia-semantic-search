@@ -1,0 +1,108 @@
+# .dockerignore para API de Búsqueda Semántica MENU
+# Excluir archivos innecesarios del contexto de Docker
+
+# Git
+.git
+.gitignore
+.gitattributes
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+
+# Documentation
+docs/_build/
+.readthedocs.yml
+
+# Docker
+Dockerfile*
+docker-compose*.yml
+.dockerignore
+
+# Desarrollo
+README.md
+LICENSE
+*.md
+
+# Datos temporales (mantener estructura pero no contenido)
+data/chroma_db/*
+!data/chroma_db/.gitkeep
+
+# Archivos de configuración local
+.env.local
+.env.development
+.env.test
+.env.production
+
+# Archivos de backup
+*.bak
+*.backup
+*.tmp
+
+# Archivos de sistema
+*.pid
+*.seed
+*.pid.lock
+
+# Archivos de editor
+*.sublime-project
+*.sublime-workspace

@@ -1,0 +1,48 @@
+# Dockerfile para desarrollo con hot-reload
+# API de Búsqueda Semántica MENU - Development
+
+FROM python:3.11-slim
+
+# Metadatos
+LABEL maintainer="MENU API Team"
+LABEL description="API de Búsqueda Semántica MENU - Development"
+
+# Variables de entorno
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONPATH="/app:$PYTHONPATH"
+
+# Instalar dependencias del sistema
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    git \
+    && rm -rf /var/lib/apt/lists/*
+
+# Crear directorio de trabajo
+WORKDIR /app
+
+# Copiar requirements e instalar dependencias
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Instalar dependencias adicionales para desarrollo
+RUN pip install --no-cache-dir \
+    pytest \
+    pytest-asyncio \
+    httpx \
+    black \
+    flake8 \
+    mypy
+
+# Crear directorios necesarios
+RUN mkdir -p /data/chroma_db
+
+# Exponer puerto
+EXPOSE 8000
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:8000/health || exit 1
+
+# Comando por defecto con hot-reload
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]

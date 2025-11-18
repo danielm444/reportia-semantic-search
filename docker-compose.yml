@@ -1,0 +1,113 @@
+# Docker Compose para desarrollo local
+# Reportia Semantic Search API
+
+version: '3.8'
+
+services:
+  # Servicio de Qdrant (Base de datos vectorial)
+  qdrant:
+    image: qdrant/qdrant:v1.7.3
+    container_name: qdrant
+    ports:
+      - "6333:6333"  # HTTP API
+      - "6334:6334"  # gRPC API
+    volumes:
+      - qdrant_data:/qdrant/storage
+    environment:
+      - QDRANT__SERVICE__GRPC_PORT=6334
+    restart: unless-stopped
+    networks:
+      - menu-network
+
+  # Servicio principal de la API
+  menu-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runtime
+    container_name: menu-api
+    ports:
+      - "8000:8000"
+    volumes:
+      # Volumen persistente para ChromaDB (deprecated)
+      - chroma_data:/data/chroma_db
+      # Volumen para datos de entrada (desarrollo)
+      - ./data:/app/data:ro
+      # Volumen para logs (opcional)
+      - ./logs:/app/logs
+    environment:
+      # Configuración para desarrollo
+      - LOG_LEVEL=DEBUG
+      - HOST=0.0.0.0
+      - PORT=8000
+      # Variables que deben configurarse en .env
+      - MENU_API_KEY=${MENU_API_KEY:-dev_api_key_123}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-sk-placeholder}
+      # ChromaDB (deprecated)
+      - CHROMA_DB_PATH=/data/chroma_db
+      # Qdrant Configuration
+      - QDRANT_URL=http://qdrant:6333
+      - QDRANT_API_KEY=${QDRANT_API_KEY:-}
+      - QDRANT_COLLECTION_NAME=${QDRANT_COLLECTION_NAME:-saved_queries}
+      - CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS:-http://localhost:3000,http://localhost:8080}
+    env_file:
+      - .env
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - menu-network
+    depends_on:
+      - qdrant
+
+  # Servicio de desarrollo con hot-reload (opcional)
+  menu-api-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    container_name: menu-api-dev
+    ports:
+      - "8001:8000"
+    volumes:
+      # Montar código fuente para hot-reload
+      - .:/app
+      - chroma_data:/data/chroma_db
+    environment:
+      - LOG_LEVEL=DEBUG
+      - MENU_API_KEY=dev_api_key_123
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-sk-placeholder}
+      # ChromaDB (deprecated)
+      - CHROMA_DB_PATH=/data/chroma_db
+      # Qdrant Configuration
+      - QDRANT_URL=http://qdrant:6333
+      - QDRANT_API_KEY=
+      - QDRANT_COLLECTION_NAME=saved_queries
+      - CORS_ALLOWED_ORIGINS=http://localhost:3000,http://localhost:8080
+    command: ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+    restart: unless-stopped
+    networks:
+      - menu-network
+    depends_on:
+      - qdrant
+    profiles:
+      - dev
+
+# Volúmenes persistentes
+volumes:
+  qdrant_data:
+    driver: local
+  chroma_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ./data/chroma_db
+
+# Red personalizada
+networks:
+  menu-network:
+    driver: bridge
