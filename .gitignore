@@ -64,3 +64,4 @@ Thumbs.db
 # Si usás pyenv y no querés fijar versión local en el repo:
 .python-version
 /.kiro
+/embeddings_export
