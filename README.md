@@ -9,15 +9,16 @@ Microservicio RESTful en Python que proporciona búsqueda semántica sobre catá
 
 ## 🚀 Características
 
-- **Búsqueda Semántica**: Consultas en lenguaje natural sobre consultas guardadas con similarity scores
+- **Núcleo Genérico**: Indexa cualquier documento (`id` + `texto` + `payload` libre); la búsqueda devuelve el **payload completo**. Sirve para menús de navegación, consultas SQL guardadas o cualquier catálogo.
+- **Búsqueda Semántica**: Consultas en lenguaje natural con similarity scores, **filtros por payload**, **umbral de score** y **paginación**.
 - **Base de Datos Vectorial**: Qdrant para búsquedas vectoriales escalables y eficientes
-- **Sincronización CRUD**: Endpoints para crear, actualizar y eliminar consultas guardadas
+- **Sincronización CRUD**: Endpoints para crear, actualizar y eliminar (individual y **en lote/batch**)
+- **Rendimiento**: Caché LRU de embeddings de consultas + upsert/embeddings en lote
 - **Arquitectura Modular**: Servicios desacoplados para embeddings, búsqueda y Qdrant
-- **API Versionada**: Endpoints `/v1` con preparación para futuras versiones
-- **Autenticación**: Seguridad por API Key con logging estructurado
+- **Autenticación**: API Key con `401`/`403` diferenciados y comparación en tiempo constante
+- **Calidad**: Suite de tests `pytest` que corre sin red (Qdrant en memoria + embeddings fake), Pydantic v2, `lifespan` moderno
 - **Containerización**: Docker y Docker Compose listos para producción
-- **Health Checks**: Monitoreo detallado de servicios y dependencias
-- **Documentación**: OpenAPI 3.0+ automática con Swagger UI y ejemplos completos
+- **Health Checks** y **OpenAPI 3.0+** con Swagger UI
 
 ## 📋 Tabla de Contenidos
 
@@ -232,26 +233,49 @@ curl -X POST "http://localhost:8000/api/v1/buscar" \
 ### API v1 (Requiere Autenticación)
 
 #### Endpoints de Búsqueda
-- `POST /api/v1/buscar` - Búsqueda semántica con similarity scores
+- `POST /api/v1/buscar` - Búsqueda semántica con scores, filtros, umbral y paginación
 
-#### Endpoints de Sincronización (CRUD)
+#### Endpoints de Documentos Genéricos (CRUD)
+- `POST /api/v1/documentos/upsert` - Crear o actualizar un documento genérico
+- `POST /api/v1/documentos/upsert/batch` - Crear o actualizar documentos en lote
+- `DELETE /api/v1/documentos/{doc_id}` - Eliminar un documento (id int o string)
+
+#### Endpoints de Consultas Guardadas (compatibilidad saved_query)
 - `POST /api/v1/consultas/upsert` - Crear o actualizar consulta guardada
+- `POST /api/v1/consultas/upsert/batch` - Crear o actualizar consultas en lote
 - `DELETE /api/v1/consultas/{query_id}` - Eliminar consulta guardada
 
 #### Endpoints de Información
 - `GET /api/v1/health` - Health check detallado
 - `GET /api/v1/info` - Información de la API v1
 
+> **Modelo de datos genérico**: la base vectorial almacena documentos
+> `{ id, texto, payload }`. El `texto` se vectoriza; el `payload` (cualquier
+> estructura) se guarda y se devuelve **íntegro** en `data` al buscar. Los
+> endpoints de `consultas` son adaptadores sobre este núcleo.
+
 ### Búsqueda Semántica con Similarity Scores
 
-El endpoint `/api/v1/buscar` ahora incluye **similarity scores** para cada resultado:
+El endpoint `/api/v1/buscar` incluye **similarity scores** y parámetros opcionales
+de filtrado, umbral y paginación:
 
 ```json
 {
   "pregunta": "¿dónde configuro alertas?",
-  "top_k": 3
+  "top_k": 3,
+  "score_threshold": 0.5,
+  "filtros": { "tipo": "configuration" },
+  "offset": 0
 }
 ```
+
+| Parámetro | Tipo | Default | Descripción |
+|-----------|------|---------|-------------|
+| `pregunta` | string | — | Consulta en lenguaje natural (1-1000 chars) |
+| `top_k` | int | 3 | Número de resultados (1-20) |
+| `score_threshold` | float? | `null` | Descarta resultados por debajo del umbral (0-1) |
+| `filtros` | object? | `null` | Igualdad sobre el payload; AND entre campos, lista = OR |
+| `offset` | int | 0 | Resultados a saltar (paginación) |
 
 **Respuesta con Scores:**
 ```json
@@ -521,7 +545,13 @@ menu-api/
 │   │   ├── search_service.py   # Servicio de búsqueda
 │   │   └── embedding_service.py # Servicio de embeddings
 │   └── config/                 # Configuración
-│       └── settings.py         # Variables de entorno
+│       └── settings.py         # Variables de entorno (Pydantic v2)
+├── tests/                      # Suite pytest (fakes: Qdrant en memoria + embeddings)
+│   ├── conftest.py            # Fixtures y fakes
+│   ├── test_normalizer.py
+│   ├── test_menu_item.py
+│   ├── test_search_service.py  # Round-trip, filtros, umbral, paginación
+│   └── test_api.py            # Auth 401/403, payload completo, batch, CORS
 ├── data/                       # Datos y almacenamiento
 │   └── qdrant_storage/        # Datos de Qdrant (Docker volume)
 ├── scripts/                    # Scripts de utilidad
@@ -796,12 +826,12 @@ Ver [docs/OPTIMIZACIONES.md](docs/OPTIMIZACIONES.md) para detalles completos sob
 ### Comandos de Validación
 
 ```bash
-# Probar optimizaciones
-python test_optimization.py
+# Ejecutar la suite de tests (no requiere red ni OpenAI: Qdrant en memoria + embeddings fake)
+pytest -q
 
-# Probar API optimizada
-python test_api_simple.py
-
-# Reindexar con optimizaciones
+# Reindexar menu.json en Qdrant (requiere Qdrant + OPENAI_API_KEY)
 python indexar.py --verbose --debug-text
+
+# Validación previa sin cambios
+python indexar.py --dry-run
 ```

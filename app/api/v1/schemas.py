@@ -4,29 +4,54 @@ Define modelos de entrada y salida para endpoints.
 """
 
 from pydantic import BaseModel, Field, field_validator
-from typing import List, Dict, Any, Optional
-from datetime import datetime
+from typing import List, Dict, Any, Optional, Union
+from datetime import datetime, timezone
 
 
 class SearchRequest(BaseModel):
     """Modelo para peticiones de búsqueda semántica."""
-    
+
     pregunta: str = Field(
-        ..., 
+        ...,
         description="Consulta en lenguaje natural",
         min_length=1,
         max_length=1000,
-        example="¿dónde configuro alertas?"
+        examples=["¿dónde configuro alertas?"]
     )
-    
+
     top_k: int = Field(
         default=3,
         description="Número de resultados a retornar",
         ge=1,
         le=20,
-        example=3
+        examples=[3]
     )
-    
+
+    score_threshold: Optional[float] = Field(
+        default=None,
+        description="Umbral mínimo de similitud (0-1). Filtra resultados por debajo.",
+        ge=0.0,
+        le=1.0,
+        examples=[0.5]
+    )
+
+    filtros: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description=(
+            "Filtros de igualdad sobre el payload. Cada par campo:valor se "
+            "combina con AND; un valor de tipo lista coincide con cualquiera "
+            "de sus elementos (OR)."
+        ),
+        examples=[{"tipo": "security", "estado": "active"}]
+    )
+
+    offset: int = Field(
+        default=0,
+        description="Número de resultados a saltar (paginación)",
+        ge=0,
+        examples=[0]
+    )
+
     @field_validator('pregunta')
     @classmethod
     def validate_pregunta(cls, v):
@@ -34,14 +59,18 @@ class SearchRequest(BaseModel):
         if not v.strip():
             raise ValueError('La pregunta no puede estar vacía')
         return v.strip()
-    
-    class Config:
-        json_json_schema_extra = {
+
+    model_config = {
+        "json_schema_extra": {
             "example": {
                 "pregunta": "¿dónde configuro alertas del sistema?",
-                "top_k": 3
+                "top_k": 3,
+                "score_threshold": 0.5,
+                "filtros": {"tipo": "configuration"},
+                "offset": 0
             }
         }
+    }
 
 
 class SearchResult(BaseModel):
@@ -61,8 +90,8 @@ class SearchResult(BaseModel):
         le=1.0
     )
     
-    class Config:
-        json_schema_extra = {
+    model_config = {
+        "json_schema_extra": {
             "example": {
                 "data": {
                     "ID": 2,
@@ -74,6 +103,7 @@ class SearchResult(BaseModel):
                 "score": 0.8547
             }
         }
+    }
 
 
 class SearchResponse(BaseModel):
@@ -102,12 +132,12 @@ class SearchResponse(BaseModel):
     )
     
     timestamp: datetime = Field(
-        default_factory=datetime.utcnow,
+        default_factory=lambda: datetime.now(timezone.utc),
         description="Timestamp de la respuesta"
     )
     
-    class Config:
-        json_schema_extra = {
+    model_config = {
+        "json_schema_extra": {
             "example": {
                 "resultados": [
                     {
@@ -137,6 +167,7 @@ class SearchResponse(BaseModel):
                 "timestamp": "2024-01-01T12:00:00Z"
             }
         }
+    }
 
 
 class HealthResponse(BaseModel):
@@ -145,17 +176,17 @@ class HealthResponse(BaseModel):
     status: str = Field(
         ...,
         description="Estado del servicio",
-        example="healthy"
+        examples=["healthy"]
     )
     
     version: str = Field(
         ...,
         description="Versión de la API",
-        example="1.0.0"
+        examples=["1.0.0"]
     )
     
     timestamp: datetime = Field(
-        default_factory=datetime.utcnow,
+        default_factory=lambda: datetime.now(timezone.utc),
         description="Timestamp del health check"
     )
     
@@ -164,8 +195,8 @@ class HealthResponse(BaseModel):
         description="Estado de servicios externos"
     )
     
-    class Config:
-        json_schema_extra = {
+    model_config = {
+        "json_schema_extra": {
             "example": {
                 "status": "healthy",
                 "version": "1.0.0", 
@@ -176,6 +207,7 @@ class HealthResponse(BaseModel):
                 }
             }
         }
+    }
 
 
 class ErrorResponse(BaseModel):
@@ -184,24 +216,24 @@ class ErrorResponse(BaseModel):
     error: str = Field(
         ...,
         description="Código de error",
-        example="VALIDATION_ERROR"
+        examples=["VALIDATION_ERROR"]
     )
     
     message: str = Field(
         ...,
         description="Mensaje descriptivo del error",
-        example="La pregunta no puede estar vacía"
+        examples=["La pregunta no puede estar vacía"]
     )
     
     timestamp: datetime = Field(
-        default_factory=datetime.utcnow,
+        default_factory=lambda: datetime.now(timezone.utc),
         description="Timestamp del error"
     )
     
     path: Optional[str] = Field(
         None,
         description="Ruta del endpoint donde ocurrió el error",
-        example="/v1/buscar"
+        examples=["/v1/buscar"]
     )
     
     details: Optional[Dict[str, Any]] = Field(
@@ -209,8 +241,8 @@ class ErrorResponse(BaseModel):
         description="Detalles adicionales del error"
     )
     
-    class Config:
-        json_schema_extra = {
+    model_config = {
+        "json_schema_extra": {
             "example": {
                 "error": "VALIDATION_ERROR",
                 "message": "La pregunta no puede estar vacía",
@@ -221,6 +253,7 @@ class ErrorResponse(BaseModel):
                 }
             }
         }
+    }
 
 
 class IndexingRequest(BaseModel):
@@ -229,7 +262,7 @@ class IndexingRequest(BaseModel):
     file_path: str = Field(
         ...,
         description="Ruta del archivo a indexar",
-        example="data/menu.json"
+        examples=["data/menu.json"]
     )
     
     force_rebuild: bool = Field(
@@ -237,13 +270,14 @@ class IndexingRequest(BaseModel):
         description="Forzar reconstrucción completa del índice"
     )
     
-    class Config:
-        json_schema_extra = {
+    model_config = {
+        "json_schema_extra": {
             "example": {
                 "file_path": "data/menu.json",
                 "force_rebuild": True
             }
         }
+    }
 
 
 class IndexingResponse(BaseModel):
@@ -252,7 +286,7 @@ class IndexingResponse(BaseModel):
     status: str = Field(
         ...,
         description="Estado de la indexación",
-        example="completed"
+        examples=["completed"]
     )
     
     documents_processed: int = Field(
@@ -268,12 +302,12 @@ class IndexingResponse(BaseModel):
     )
     
     timestamp: datetime = Field(
-        default_factory=datetime.utcnow,
+        default_factory=lambda: datetime.now(timezone.utc),
         description="Timestamp de la indexación"
     )
     
-    class Config:
-        json_schema_extra = {
+    model_config = {
+        "json_schema_extra": {
             "example": {
                 "status": "completed",
                 "documents_processed": 5,
@@ -281,6 +315,7 @@ class IndexingResponse(BaseModel):
                 "timestamp": "2024-01-01T12:00:00Z"
             }
         }
+    }
 
 
 # Modelos de respuesta para diferentes códigos de estado HTTP
@@ -289,8 +324,8 @@ class ValidationErrorResponse(ErrorResponse):
     
     error: str = Field(default="VALIDATION_ERROR")
     
-    class Config:
-        json_schema_extra = {
+    model_config = {
+        "json_schema_extra": {
             "example": {
                 "error": "VALIDATION_ERROR",
                 "message": "top_k debe estar entre 1 y 20",
@@ -302,6 +337,7 @@ class ValidationErrorResponse(ErrorResponse):
                 }
             }
         }
+    }
 
 
 class AuthenticationErrorResponse(ErrorResponse):
@@ -309,8 +345,8 @@ class AuthenticationErrorResponse(ErrorResponse):
     
     error: str = Field(default="AUTHENTICATION_REQUIRED")
     
-    class Config:
-        json_schema_extra = {
+    model_config = {
+        "json_schema_extra": {
             "example": {
                 "error": "AUTHENTICATION_REQUIRED",
                 "message": "Header X-API-Key requerido",
@@ -318,6 +354,7 @@ class AuthenticationErrorResponse(ErrorResponse):
                 "path": "/v1/buscar"
             }
         }
+    }
 
 
 class AuthorizationErrorResponse(ErrorResponse):
@@ -325,8 +362,8 @@ class AuthorizationErrorResponse(ErrorResponse):
     
     error: str = Field(default="INVALID_API_KEY")
     
-    class Config:
-        json_schema_extra = {
+    model_config = {
+        "json_schema_extra": {
             "example": {
                 "error": "INVALID_API_KEY",
                 "message": "Clave API inválida",
@@ -334,6 +371,7 @@ class AuthorizationErrorResponse(ErrorResponse):
                 "path": "/v1/buscar"
             }
         }
+    }
 
 
 class ServiceUnavailableErrorResponse(ErrorResponse):
@@ -341,8 +379,8 @@ class ServiceUnavailableErrorResponse(ErrorResponse):
     
     error: str = Field(default="EXTERNAL_SERVICE_ERROR")
     
-    class Config:
-        json_schema_extra = {
+    model_config = {
+        "json_schema_extra": {
             "example": {
                 "error": "EXTERNAL_SERVICE_ERROR",
                 "message": "Servicio de embeddings no disponible temporalmente",
@@ -353,6 +391,7 @@ class ServiceUnavailableErrorResponse(ErrorResponse):
                 }
             }
         }
+    }
 
 
 # ============================================================================
@@ -366,7 +405,7 @@ class SavedQueryData(BaseModel):
         ..., 
         description="ID único de la consulta",
         gt=0,
-        example=123
+        examples=[123]
     )
     
     name: str = Field(
@@ -374,75 +413,75 @@ class SavedQueryData(BaseModel):
         description="Nombre visible de la consulta",
         min_length=1,
         max_length=500,
-        example="Reporte de ventas mensuales"
+        examples=["Reporte de ventas mensuales"]
     )
     
     description: Optional[str] = Field(
         None,
         description="Descripción opcional de la consulta",
         max_length=2000,
-        example="Consulta que genera reporte de ventas por mes y región"
+        examples=["Consulta que genera reporte de ventas por mes y región"]
     )
     
     query_sql_original: str = Field(
         ...,
         description="SQL original proporcionado por el usuario",
-        example="SELECT * FROM sales WHERE month = ?"
+        examples=["SELECT * FROM sales WHERE month = ?"]
     )
     
     query_sql_param: Optional[str] = Field(
         None,
         description="SQL parametrizado resultante",
-        example="SELECT * FROM sales WHERE month = :month"
+        examples=["SELECT * FROM sales WHERE month = :month"]
     )
     
     parameters_json: Optional[Dict[str, Any]] = Field(
         None,
         description="Estructura con metadatos de parámetros",
-        example={"month": {"type": "integer", "default": 1}}
+        examples=[{"month": {"type": "integer", "default": 1}}]
     )
     
     engine_code: str = Field(
         ...,
         description="Código del motor de base de datos",
-        example="postgres"
+        examples=["postgres"]
     )
     
     company_id: int = Field(
         ...,
         description="ID de la compañía dueña de la consulta",
-        example=456
+        examples=[456]
     )
     
     owner_user_id: int = Field(
         ...,
         description="ID del usuario propietario",
-        example=789
+        examples=[789]
     )
     
     version: int = Field(
         default=1,
         description="Versión del registro",
         ge=1,
-        example=1
+        examples=[1]
     )
     
     is_active: bool = Field(
         default=True,
         description="Marca de vigencia de la consulta",
-        example=True
+        examples=[True]
     )
     
     created_at: datetime = Field(
         ...,
         description="Timestamp de creación",
-        example="2024-01-15T10:30:00Z"
+        examples=["2024-01-15T10:30:00Z"]
     )
     
     updated_at: datetime = Field(
         ...,
         description="Timestamp de última actualización",
-        example="2024-01-15T10:30:00Z"
+        examples=["2024-01-15T10:30:00Z"]
     )
     
     @field_validator('name')
@@ -453,8 +492,8 @@ class SavedQueryData(BaseModel):
             raise ValueError('El nombre no puede estar vacío')
         return v.strip()
     
-    class Config:
-        json_schema_extra = {
+    model_config = {
+        "json_schema_extra": {
             "example": {
                 "id": 123,
                 "name": "Reporte de ventas mensuales",
@@ -471,6 +510,7 @@ class SavedQueryData(BaseModel):
                 "updated_at": "2024-01-15T10:30:00Z"
             }
         }
+    }
 
 
 class UpsertQueryRequest(BaseModel):
@@ -486,8 +526,8 @@ class UpsertQueryRequest(BaseModel):
         description="Datos completos de la consulta a sincronizar"
     )
     
-    class Config:
-        json_schema_extra = {
+    model_config = {
+        "json_schema_extra": {
             "example": {
                 "query": {
                     "id": 123,
@@ -506,6 +546,7 @@ class UpsertQueryRequest(BaseModel):
                 }
             }
         }
+    }
 
 
 
@@ -519,28 +560,28 @@ class UpsertQueryResponse(BaseModel):
     id: int = Field(
         ...,
         description="ID de la consulta sincronizada",
-        example=123
+        examples=[123]
     )
     
     status: str = Field(
         default="success",
         description="Estado de la operación (success, updated, created)",
-        example="success"
+        examples=["success"]
     )
     
     message: str = Field(
         default="Consulta sincronizada exitosamente",
         description="Mensaje descriptivo de la operación realizada",
-        example="Consulta sincronizada exitosamente"
+        examples=["Consulta sincronizada exitosamente"]
     )
     
     timestamp: datetime = Field(
-        default_factory=datetime.utcnow,
+        default_factory=lambda: datetime.now(timezone.utc),
         description="Timestamp UTC de cuando se completó la operación"
     )
     
-    class Config:
-        json_schema_extra = {
+    model_config = {
+        "json_schema_extra": {
             "example": {
                 "id": 123,
                 "status": "success",
@@ -548,6 +589,7 @@ class UpsertQueryResponse(BaseModel):
                 "timestamp": "2024-01-15T10:30:00Z"
             }
         }
+    }
 
 
 class QuerySearchResult(BaseModel):
@@ -578,8 +620,8 @@ class QuerySearchResult(BaseModel):
         le=1.0
     )
     
-    class Config:
-        json_schema_extra = {
+    model_config = {
+        "json_schema_extra": {
             "example": {
                 "id": 123,
                 "name": "Reporte de ventas mensuales",
@@ -597,6 +639,7 @@ class QuerySearchResult(BaseModel):
                 "score": 0.8547
             }
         }
+    }
 
 
 class QuerySearchResponse(BaseModel):
@@ -625,12 +668,12 @@ class QuerySearchResponse(BaseModel):
     )
     
     timestamp: datetime = Field(
-        default_factory=datetime.utcnow,
+        default_factory=lambda: datetime.now(timezone.utc),
         description="Timestamp de la respuesta"
     )
     
-    class Config:
-        json_schema_extra = {
+    model_config = {
+        "json_schema_extra": {
             "example": {
                 "resultados": [
                     {
@@ -654,3 +697,93 @@ class QuerySearchResponse(BaseModel):
                 "timestamp": "2024-01-15T10:35:00Z"
             }
         }
+    }
+
+
+# ============================================================================
+# Schemas genéricos de documentos (núcleo agnóstico de dominio)
+# ============================================================================
+
+class DocumentData(BaseModel):
+    """
+    Documento genérico para indexar: id + texto a vectorizar + payload libre.
+
+    El ``payload`` se almacena tal cual y se devuelve íntegro en las búsquedas,
+    por lo que el servicio sirve para cualquier dominio (menú, saved queries…).
+    """
+
+    id: Union[int, str] = Field(
+        ...,
+        description="Identificador único del documento (entero o string)",
+        examples=[42, "menu-usuarios"]
+    )
+
+    texto: str = Field(
+        ...,
+        description="Texto a vectorizar para la búsqueda semántica",
+        min_length=1,
+        examples=["Seguridad > Usuarios. Gestionar usuarios del sistema."]
+    )
+
+    payload: Dict[str, Any] = Field(
+        default_factory=dict,
+        description="Metadatos arbitrarios a almacenar y devolver en búsquedas"
+    )
+
+    @field_validator('texto')
+    @classmethod
+    def validate_texto(cls, v):
+        """Valida que el texto no esté vacío después de strip."""
+        if not v.strip():
+            raise ValueError('El texto no puede estar vacío')
+        return v.strip()
+
+    model_config = {
+        "json_schema_extra": {
+            "example": {
+                "id": 42,
+                "texto": "Seguridad > Usuarios. Gestionar usuarios del sistema.",
+                "payload": {
+                    "titulo": "Seguridad › Usuarios",
+                    "url": "wwusersgam.aspx",
+                    "tipo": "security"
+                }
+            }
+        }
+    }
+
+
+class BatchDocumentUpsertRequest(BaseModel):
+    """Request para upsert en lote de documentos genéricos."""
+
+    documentos: List[DocumentData] = Field(
+        ...,
+        description="Lista de documentos a indexar",
+        min_length=1
+    )
+
+
+class BatchUpsertQueryRequest(BaseModel):
+    """Request para upsert en lote de consultas guardadas."""
+
+    queries: List[SavedQueryData] = Field(
+        ...,
+        description="Lista de consultas guardadas a sincronizar",
+        min_length=1
+    )
+
+
+class BatchUpsertResponse(BaseModel):
+    """Response de operaciones de upsert en lote."""
+
+    count: int = Field(..., description="Cantidad de elementos sincronizados", ge=0)
+    ids: List[Union[int, str]] = Field(..., description="IDs de los elementos sincronizados")
+    status: str = Field(default="success", description="Estado de la operación")
+    message: str = Field(
+        default="Sincronización en lote completada exitosamente",
+        description="Mensaje descriptivo"
+    )
+    timestamp: datetime = Field(
+        default_factory=lambda: datetime.now(timezone.utc),
+        description="Timestamp UTC de la operación"
+    )

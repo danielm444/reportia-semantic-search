@@ -2,6 +2,7 @@
 Punto de entrada principal para la API de Búsqueda Semántica MENU.
 """
 
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -19,6 +20,83 @@ logger = get_logger(__name__)
 # Validar configuración
 settings.validate_configuration()
 
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """
+    Ciclo de vida de la aplicación (reemplaza @app.on_event).
+
+    En el arranque hace warm-up de las dependencias: conexión y colección de
+    Qdrant, y precalentamiento del servicio de embeddings y de búsqueda. Los
+    errores de warm-up no impiden el arranque (la app degrada con gracia).
+    """
+    logger.info(
+        "Iniciando aplicación",
+        app_name=settings.app_name,
+        version=settings.app_version,
+        log_level=settings.log_level,
+        host=settings.host,
+        port=settings.port,
+    )
+
+    # 1. Inicializar y validar conexión a Qdrant
+    try:
+        from app.services.qdrant_service import get_qdrant_service
+
+        qdrant_service = get_qdrant_service()
+        qdrant_health = qdrant_service.health_check()
+
+        if qdrant_health.get("status") == "healthy":
+            logger.info(
+                "Conexión a Qdrant establecida",
+                url=qdrant_health.get("url"),
+                collection=qdrant_health.get("collection_name"),
+                collection_exists=qdrant_health.get("collection_exists"),
+            )
+            if not qdrant_health.get("collection_exists"):
+                qdrant_service.ensure_collection(vector_size=1536)
+                logger.info("Colección creada exitosamente")
+        else:
+            logger.warning(
+                "Conexión a Qdrant no disponible; las búsquedas pueden fallar",
+                status=qdrant_health.get("status"),
+                error=qdrant_health.get("error"),
+            )
+    except Exception as e:
+        logger.error("Error inicializando Qdrant", error=str(e), exc_info=True)
+
+    # 2. Warm-up del servicio de embeddings
+    try:
+        from app.services.embedding_service import get_embedding_service
+
+        warmup_result = await get_embedding_service().warmup()
+        if warmup_result["status"] == "completed":
+            logger.info(
+                "Warm-up de embeddings completado",
+                duration=f"{warmup_result['duration']:.3f}s",
+                queries_processed=warmup_result["queries_processed"],
+            )
+        else:
+            logger.warning("Warm-up de embeddings falló", error=warmup_result.get("error"))
+    except Exception as e:
+        logger.error("Error en warm-up de embeddings", error=str(e))
+
+    # 3. Warm-up del servicio de búsqueda (opcional)
+    try:
+        from app.services.search_service import get_search_service
+
+        await get_search_service().search("test warmup", top_k=1)
+        logger.info("Warm-up de búsqueda completado")
+    except Exception as e:
+        logger.warning("Warm-up de búsqueda falló (puede haber latencia inicial)", error=str(e))
+
+    logger.info("Warm-up automático completado")
+
+    yield
+
+    logger.info("Cerrando aplicación")
+
+
 # Crear instancia de FastAPI
 app = FastAPI(
     title=settings.app_name,
@@ -26,6 +104,7 @@ app = FastAPI(
     description="Microservicio RESTful para búsqueda semántica sobre catálogos de datos estructurados",
     docs_url="/docs",
     openapi_url="/openapi.json",
+    lifespan=lifespan,
     contact={
         "name": "API de Búsqueda Semántica MENU",
         "url": "https://github.com/menu-api",
@@ -49,20 +128,15 @@ def custom_openapi():
         description="Microservicio RESTful para búsqueda semántica sobre catálogos de datos estructurados",
         routes=app.routes,
     )
-    
-    # Agregar esquema de seguridad para API Key
-    if "components" not in openapi_schema:
-        openapi_schema["components"] = {}
-    
-    openapi_schema["components"]["securitySchemes"] = {
-        "ApiKeyAuth": {
-            "type": "apiKey",
-            "in": "header",
-            "name": "X-API-Key",
-            "description": "Ingresa tu API Key aquí. Para pruebas usa: test_api_key_123"
-        }
-    }
-    
+
+    # Enriquecer la descripción del esquema de API Key AUTOGENERADO sin
+    # sobrescribirlo: las operaciones referencian este esquema (derivado de
+    # APIKeyHeader), por lo que reemplazarlo rompería el botón "Authorize".
+    schemes = openapi_schema.get("components", {}).get("securitySchemes", {})
+    for scheme in schemes.values():
+        if scheme.get("type") == "apiKey" and scheme.get("name") == "X-API-Key":
+            scheme["description"] = "Ingresa tu API Key. Para pruebas usa: test_api_key_123"
+
     app.openapi_schema = openapi_schema
     return app.openapi_schema
 
@@ -73,7 +147,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins_list,
     allow_credentials=True,
-    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_methods=["GET", "POST", "DELETE", "PUT", "PATCH", "OPTIONS"],
     allow_headers=["*"],
     expose_headers=["X-Process-Time"]
 )
@@ -268,136 +342,6 @@ async def general_exception_handler(request: Request, exc: Exception):
             "path": str(request.url.path)
         }
     )
-
-
-@app.on_event("startup")
-async def startup_event():
-    """Evento de inicio de la aplicación."""
-    logger.info(
-        "Iniciando aplicación",
-        app_name=settings.app_name,
-        version=settings.app_version,
-        log_level=settings.log_level,
-        host=settings.host,
-        port=settings.port
-    )
-    
-    # Realizar warm-up automático de servicios
-    try:
-        logger.info("Iniciando warm-up automático de servicios")
-        
-        # 1. Inicializar y validar conexión a Qdrant
-        try:
-            logger.info("Inicializando conexión a Qdrant")
-            from app.services.qdrant_service import get_qdrant_service
-            
-            qdrant_service = get_qdrant_service()
-            
-            # Validar conexión con health check
-            qdrant_health = qdrant_service.health_check()
-            
-            if qdrant_health.get("status") == "healthy":
-                logger.info(
-                    "Conexión a Qdrant establecida exitosamente",
-                    url=qdrant_health.get("url"),
-                    collection=qdrant_health.get("collection_name"),
-                    collection_exists=qdrant_health.get("collection_exists"),
-                    total_collections=qdrant_health.get("total_collections")
-                )
-                
-                # Asegurar que la colección existe
-                if not qdrant_health.get("collection_exists"):
-                    logger.info("Creando colección en Qdrant")
-                    qdrant_service.ensure_collection(vector_size=1536)
-                    logger.info("Colección creada exitosamente")
-                else:
-                    collection_info = qdrant_health.get("collection_info", {})
-                    logger.info(
-                        "Colección existente encontrada",
-                        points_count=collection_info.get("points_count", 0),
-                        vectors_count=collection_info.get("vectors_count", 0)
-                    )
-            else:
-                logger.warning(
-                    "Conexión a Qdrant no disponible",
-                    status=qdrant_health.get("status"),
-                    error=qdrant_health.get("error")
-                )
-                logger.warning("La aplicación continuará pero las operaciones de búsqueda pueden fallar")
-                
-        except Exception as e:
-            logger.error(
-                "Error inicializando Qdrant",
-                error=str(e),
-                error_type=type(e).__name__,
-                exc_info=True
-            )
-            logger.warning("La aplicación continuará pero las operaciones de búsqueda pueden fallar")
-        
-        # 2. Warm-up del servicio de embeddings
-        try:
-            logger.info("Iniciando warm-up de servicio de embeddings")
-            from app.services.embedding_service import get_embedding_service
-            
-            embedding_service = get_embedding_service()
-            warmup_result = await embedding_service.warmup()
-            
-            if warmup_result["status"] == "completed":
-                logger.info(
-                    "Warm-up de embeddings completado",
-                    duration=f"{warmup_result['duration']:.3f}s",
-                    queries_processed=warmup_result["queries_processed"]
-                )
-            else:
-                logger.warning(
-                    "Warm-up de embeddings falló",
-                    error=warmup_result.get("error", "Unknown error")
-                )
-        except Exception as e:
-            logger.error(
-                "Error en warm-up de embeddings",
-                error=str(e),
-                error_type=type(e).__name__
-            )
-        
-        # 3. Warm-up del servicio de búsqueda (opcional)
-        try:
-            logger.info("Realizando warm-up de búsqueda vectorial")
-            from app.services.search_service import get_search_service
-            
-            search_service = get_search_service()
-            
-            # Realizar una búsqueda de prueba para inicializar el servicio
-            test_results = await search_service.search("test warmup", top_k=1)
-            logger.info(
-                "Warm-up de búsqueda completado",
-                results_found=len(test_results)
-            )
-        except Exception as e:
-            logger.warning(
-                "Warm-up de búsqueda falló",
-                error=str(e),
-                error_type=type(e).__name__
-            )
-            logger.warning("La aplicación continuará pero puede haber latencia en la primera búsqueda")
-        
-        logger.info("Warm-up automático completado exitosamente")
-        
-    except Exception as e:
-        logger.error(
-            "Error durante warm-up automático",
-            error=str(e),
-            error_type=type(e).__name__,
-            exc_info=True
-        )
-        # No fallar el startup por errores de warm-up
-        logger.warning("Continuando startup sin warm-up completo")
-
-
-@app.on_event("shutdown")
-async def shutdown_event():
-    """Evento de cierre de la aplicación."""
-    logger.info("Cerrando aplicación")
 
 
 # Endpoints básicos (públicos)

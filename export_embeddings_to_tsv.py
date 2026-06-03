@@ -60,40 +60,38 @@ def export_embeddings_to_tsv(collection_name: str, output_dir: str = "embeddings
             # Escribir cada dimensión separada por tabulador
             f.write('\t'.join(map(str, vector)) + '\n')
     
+    # Helpers de limpieza y etiquetado genérico
+    def clean(value) -> str:
+        return str(value).replace('\t', ' ').replace('\n', ' ').replace('\r', ' ')
+
+    def build_label(payload: dict, point_id) -> str:
+        """Etiqueta legible, agnóstica de dominio (menú o saved queries)."""
+        titulo = payload.get('titulo') or payload.get('name') or payload.get('Nivel0')
+        desc = payload.get('Descripcion') or payload.get('description')
+        if titulo and desc:
+            return f"{titulo}: {desc}"
+        return titulo or desc or str(point_id)
+
     # Escribir metadata
     print(f"Escribiendo metadata en {metadata_file}...")
     with open(metadata_file, 'w', encoding='utf-8') as f:
-        # Encabezados - ponemos 'label' primero para que sea la columna principal
-        if points:
-            sample_payload = points[0].payload
-            # 'label' será la primera columna que muestra TensorFlow Projector
-            headers = ['label', 'id', 'name', 'description'] + [k for k in sample_payload.keys() if k not in ['name', 'description']]
-            f.write('\t'.join(headers) + '\n')
-        
+        # Encabezados - 'label' e 'id' primero; el resto son las claves del payload
+        # (unión de todas las claves presentes, para ser robusto ante payloads heterogéneos)
+        payload_keys = []
+        for point in points:
+            for k in (point.payload or {}).keys():
+                if k not in payload_keys:
+                    payload_keys.append(k)
+
+        headers = ['label', 'id'] + payload_keys
+        f.write('\t'.join(headers) + '\n')
+
         # Datos
         for point in points:
-            name = point.payload.get('name', '')
-            description = point.payload.get('description', '')
-            
-            # Crear label combinando name y description
-            label = f"{name}: {description}" if name and description else name or description or str(point.id)
-            # Limpiar el label
-            label = label.replace('\t', ' ').replace('\n', ' ').replace('\r', ' ')
-            
-            row = [label, str(point.id)]
-            
-            # Agregar name y description
-            for key in ['name', 'description']:
-                value = point.payload.get(key, '')
-                value_str = str(value).replace('\t', ' ').replace('\n', ' ').replace('\r', ' ')
-                row.append(value_str)
-            
-            # Agregar el resto de campos
-            for key in headers[4:]:
-                value = point.payload.get(key, '')
-                value_str = str(value).replace('\t', ' ').replace('\n', ' ').replace('\r', ' ')
-                row.append(value_str)
-            
+            payload = point.payload or {}
+            row = [clean(build_label(payload, point.id)), clean(point.id)]
+            for key in payload_keys:
+                row.append(clean(payload.get(key, '')))
             f.write('\t'.join(row) + '\n')
     
     print(f"\n✅ Exportación completada!")
@@ -107,7 +105,7 @@ def export_embeddings_to_tsv(collection_name: str, output_dir: str = "embeddings
     print(f"   4. Sube metadata.tsv como 'Load a TSV metadata file'")
 
 if __name__ == "__main__":
-    # Nombre de tu colección
-    COLLECTION_NAME = "saved_queries"  # Cambia esto si tu colección tiene otro nombre
-    
+    # Nombre de la colección (desde .env, con fallback)
+    COLLECTION_NAME = os.getenv("QDRANT_COLLECTION_NAME", "saved_queries")
+
     export_embeddings_to_tsv(COLLECTION_NAME)

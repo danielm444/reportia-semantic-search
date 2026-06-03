@@ -3,9 +3,9 @@ Modelos de datos compartidos para el sistema de búsqueda.
 Define estructuras de datos internas y de dominio.
 """
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, ConfigDict, ValidationInfo
 from typing import List, Dict, Any, Optional, Union
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from app.core.text_normalizer import normalize_text
 
@@ -243,7 +243,10 @@ class MenuItem(BaseModel):
         """Obtiene el estado efectivo (formato actual o extendido)."""
         if self.estado:
             return self.estado
-        return self.status.value if self.status else "active"
+        if not self.status:
+            return "active"
+        # Con use_enum_values=True, status ya es str; si no, es enum.
+        return getattr(self.status, "value", self.status)
     
     def is_extended_format(self) -> bool:
         """Verifica si el elemento usa formato extendido."""
@@ -264,11 +267,11 @@ class MenuItem(BaseModel):
         Returns:
             Dict[str, Any]: Representación en diccionario
         """
-        return self.dict(exclude_none=True)
-    
-    class Config:
-        use_enum_values = True
-        json_schema_extra = {
+        return self.model_dump(exclude_none=True)
+
+    model_config = ConfigDict(
+        use_enum_values=True,
+        json_schema_extra={
             "examples": [
                 {
                     "ID": 2,
@@ -294,7 +297,8 @@ class MenuItem(BaseModel):
                     "tipo": "item"
                 }
             ]
-        }
+        },
+    )
 
 
 class SearchQuery(BaseModel):
@@ -332,8 +336,8 @@ class SearchQuery(BaseModel):
             raise ValueError('El texto de consulta no puede estar vacío')
         return v.strip()
     
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "text": "configurar alertas del sistema",
                 "limit": 5,
@@ -341,6 +345,7 @@ class SearchQuery(BaseModel):
                 "include_inactive": False
             }
         }
+    )
 
 
 class SearchResultItem(BaseModel):
@@ -368,8 +373,8 @@ class SearchResultItem(BaseModel):
         description="Fragmentos destacados del texto"
     )
     
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "document": {
                     "ID": 2,
@@ -385,6 +390,7 @@ class SearchResultItem(BaseModel):
                 }
             }
         }
+    )
 
 
 class IndexingJob(BaseModel):
@@ -441,9 +447,9 @@ class IndexingJob(BaseModel):
     
     @field_validator('documents_processed')
     @classmethod
-    def validate_processed_count(cls, v, values):
+    def validate_processed_count(cls, v, info: ValidationInfo):
         """Valida que los documentos procesados no excedan el total."""
-        total = values.get('documents_total')
+        total = info.data.get('documents_total')
         if total is not None and v > total:
             raise ValueError('Los documentos procesados no pueden exceder el total')
         return v
@@ -459,8 +465,8 @@ class IndexingJob(BaseModel):
             return (self.documents_processed / self.documents_total) * 100
         return None
     
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "job_id": "idx_20240101_120000",
                 "status": "running",
@@ -471,6 +477,7 @@ class IndexingJob(BaseModel):
                 "processing_time": 15.5
             }
         }
+    )
 
 
 class EmbeddingVector(BaseModel):
@@ -484,7 +491,7 @@ class EmbeddingVector(BaseModel):
     vector: List[float] = Field(
         ...,
         description="Vector de embedding",
-        min_items=1
+        min_length=1
     )
     
     dimension: int = Field(
@@ -499,21 +506,21 @@ class EmbeddingVector(BaseModel):
     )
     
     created_at: datetime = Field(
-        default_factory=datetime.utcnow,
+        default_factory=lambda: datetime.now(timezone.utc),
         description="Fecha de creación del embedding"
     )
     
     @field_validator('dimension')
     @classmethod
-    def validate_dimension_matches_vector(cls, v, values):
+    def validate_dimension_matches_vector(cls, v, info: ValidationInfo):
         """Valida que la dimensión coincida con la longitud del vector."""
-        vector = values.get('vector')
+        vector = info.data.get('vector')
         if vector and len(vector) != v:
             raise ValueError('La dimensión debe coincidir con la longitud del vector')
         return v
     
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "document_id": "doc_123",
                 "vector": [0.1, 0.2, 0.3, -0.1, 0.5],
@@ -522,3 +529,4 @@ class EmbeddingVector(BaseModel):
                 "created_at": "2024-01-01T12:00:00Z"
             }
         }
+    )

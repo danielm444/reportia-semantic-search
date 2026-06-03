@@ -4,6 +4,7 @@ Permite cambiar fácilmente entre diferentes proveedores de embeddings.
 """
 
 import time
+from collections import OrderedDict
 from typing import List, Optional
 from langchain_openai import OpenAIEmbeddings
 from langchain_core.embeddings import Embeddings
@@ -12,6 +13,9 @@ from app.core.logging import get_logger
 from app.core.exceptions import EmbeddingServiceError, ConfigurationError
 
 logger = get_logger(__name__)
+
+# Tamaño máximo del caché LRU de embeddings de consultas
+_QUERY_CACHE_MAXSIZE = 1024
 
 
 class EmbeddingService:
@@ -28,9 +32,13 @@ class EmbeddingService:
             embeddings_provider: Proveedor de embeddings personalizado (opcional)
         """
         self.embeddings = embeddings_provider or self._create_default_embeddings()
+        # Caché LRU en memoria para embeddings de consultas repetidas.
+        # Clave: texto (ya normalizado por la capa superior). Valor: vector.
+        self._query_cache: "OrderedDict[str, List[float]]" = OrderedDict()
         logger.info(
             "Servicio de embeddings inicializado",
-            provider=type(self.embeddings).__name__
+            provider=type(self.embeddings).__name__,
+            query_cache_maxsize=_QUERY_CACHE_MAXSIZE
         )
     
     def _create_default_embeddings(self) -> Embeddings:
@@ -110,22 +118,37 @@ class EmbeddingService:
         try:
             if not text or not text.strip():
                 raise ValueError("El texto no puede estar vacío")
-            
+
+            cache_key = text.strip()
+
+            # Hit de caché: mover al final (LRU) y devolver
+            cached = self._query_cache.get(cache_key)
+            if cached is not None:
+                self._query_cache.move_to_end(cache_key)
+                logger.debug("Embedding servido desde caché", text_length=len(text))
+                return cached
+
             logger.debug(
                 "Generando embedding para consulta",
                 text_length=len(text),
                 text_preview=text[:50] + "..." if len(text) > 50 else text
             )
-            
+
             # Usar LangChain para generar embedding
-            embedding = await self.embeddings.aembed_query(text.strip())
-            
+            embedding = await self.embeddings.aembed_query(cache_key)
+
+            # Guardar en caché con expulsión LRU
+            self._query_cache[cache_key] = embedding
+            self._query_cache.move_to_end(cache_key)
+            if len(self._query_cache) > _QUERY_CACHE_MAXSIZE:
+                self._query_cache.popitem(last=False)
+
             logger.debug(
                 "Embedding generado exitosamente",
                 embedding_dimension=len(embedding),
                 text_length=len(text)
             )
-            
+
             return embedding
             
         except ValueError as e:

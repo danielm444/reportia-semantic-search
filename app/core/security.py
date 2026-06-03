@@ -3,6 +3,7 @@ Módulo de seguridad para autenticación y autorización.
 Implementa autenticación por API Key usando FastAPI dependencies.
 """
 
+import secrets
 from fastapi import HTTPException, Security, Depends
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.security.api_key import APIKeyHeader
@@ -13,9 +14,16 @@ from app.core.exceptions import AuthenticationError, AuthorizationError
 
 logger = get_logger(__name__)
 
-# Configurar esquemas de seguridad
-api_key_header = APIKeyHeader(name="X-API-Key", auto_error=True)
+# Configurar esquemas de seguridad.
+# auto_error=False permite distinguir "falta el header" (401) de
+# "clave inválida" (403) en lugar de devolver siempre 403.
+api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 bearer_scheme = HTTPBearer(auto_error=False)
+
+
+def _api_key_matches(provided: str) -> bool:
+    """Compara la API key en tiempo constante para evitar timing attacks."""
+    return secrets.compare_digest(provided, settings.menu_api_key)
 
 
 async def get_api_key(api_key: Optional[str] = Security(api_key_header)) -> str:
@@ -35,14 +43,14 @@ async def get_api_key(api_key: Optional[str] = Security(api_key_header)) -> str:
     if not api_key:
         logger.warning("Intento de acceso sin API Key")
         raise AuthenticationError("Header X-API-Key requerido")
-    
-    if api_key != settings.menu_api_key:
+
+    if not _api_key_matches(api_key):
         logger.warning(
             "Intento de acceso con API Key inválida",
             provided_key_prefix=api_key[:8] + "..." if len(api_key) > 8 else api_key
         )
         raise AuthorizationError("Clave API inválida")
-    
+
     logger.debug("API Key validada exitosamente")
     return api_key
 
@@ -60,8 +68,8 @@ async def get_optional_api_key(api_key: Optional[str] = Security(api_key_header)
     """
     if not api_key:
         return None
-    
-    if api_key != settings.menu_api_key:
+
+    if not _api_key_matches(api_key):
         logger.warning(
             "API Key inválida en endpoint opcional",
             provided_key_prefix=api_key[:8] + "..." if len(api_key) > 8 else api_key
@@ -72,30 +80,31 @@ async def get_optional_api_key(api_key: Optional[str] = Security(api_key_header)
     return api_key
 
 
-def require_api_key(api_key: str = Depends(api_key_header)) -> str:
+def require_api_key(api_key: Optional[str] = Depends(api_key_header)) -> str:
     """
     Dependency que requiere API Key válida.
     Usar en endpoints que requieren autenticación.
-    
+
     Args:
         api_key: Clave API desde header
-        
+
     Returns:
         str: Clave API validada
-        
+
     Raises:
-        HTTPException: Si la clave API es inválida
+        HTTPException: 401 si falta el header, 403 si la clave es inválida
     """
-    if api_key != settings.menu_api_key:
+    if not api_key:
+        logger.warning("Intento de acceso sin API Key")
+        raise HTTPException(status_code=401, detail="Header X-API-Key requerido")
+
+    if not _api_key_matches(api_key):
         logger.warning(
             "Intento de acceso con API Key inválida",
             provided_key_prefix=api_key[:8] + "..." if len(api_key) > 8 else api_key
         )
-        raise HTTPException(
-            status_code=403,
-            detail="Clave API inválida"
-        )
-    
+        raise HTTPException(status_code=403, detail="Clave API inválida")
+
     logger.debug("API Key validada exitosamente")
     return api_key
 

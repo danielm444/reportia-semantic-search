@@ -4,7 +4,7 @@ Define errores específicos del dominio y manejo estructurado.
 """
 
 from typing import Any, Dict, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 
 
 class MenuAPIException(Exception):
@@ -21,7 +21,7 @@ class MenuAPIException(Exception):
         self.status_code = status_code
         self.error_code = error_code
         self.details = details or {}
-        self.timestamp = datetime.utcnow().isoformat()
+        self.timestamp = datetime.now(timezone.utc).isoformat()
         super().__init__(self.message)
     
     def to_dict(self) -> Dict[str, Any]:
