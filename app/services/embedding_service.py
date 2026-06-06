@@ -6,7 +6,6 @@ Permite cambiar fácilmente entre diferentes proveedores de embeddings.
 import time
 from collections import OrderedDict
 from typing import List, Optional
-from langchain_openai import OpenAIEmbeddings
 from langchain_core.embeddings import Embeddings
 from app.config.settings import settings
 from app.core.logging import get_logger
@@ -43,64 +42,72 @@ class EmbeddingService:
     
     def _create_default_embeddings(self) -> Embeddings:
         """
-        Crea el proveedor de embeddings por defecto (OpenAI).
-        
+        Crea el proveedor de embeddings por defecto según ``settings.embeddings_provider``.
+
+        Default ``llm_adapter`` (ADR-0049): delega en el llm-adapter de ReportIA
+        (única puerta a inferencia; el modelo activo lo decide el catálogo
+        ``embedding_model``, ADR-0047, default TEI local opt-in). ``openai`` queda
+        como proveedor alternativo.
+
         Returns:
             Embeddings: Instancia del proveedor de embeddings
-            
+
         Raises:
             ConfigurationError: Si la configuración es inválida
         """
-        try:
-            # Validar configuración
-            if not settings.openai_api_key:
-                raise ConfigurationError(
-                    "OPENAI_API_KEY no configurada",
-                    details={"required_env": "OPENAI_API_KEY"}
-                )
-            
-            # Crear instancia de OpenAI Embeddings con configuración optimizada
-            # Usar valores por defecto si los nuevos campos no están disponibles
-            max_retries = getattr(settings, 'openai_max_retries', 2)
-            timeout = getattr(settings, 'openai_timeout', 10.0)
-            max_concurrent = getattr(settings, 'openai_max_concurrent', 5)
-            
-            embeddings = OpenAIEmbeddings(
-                api_key=settings.openai_api_key,
-                model="text-embedding-3-small",
-                # Configuraciones optimizadas para rendimiento
-                max_retries=max_retries,
-                request_timeout=timeout,
-                show_progress_bar=False,
-                # Configuraciones adicionales para optimización
-                chunk_size=1000,  # Procesar en chunks más grandes
-                # Headers para optimizar conexión
-                default_headers={
-                    "Connection": "keep-alive",
-                    "Keep-Alive": "timeout=30, max=100"
-                }
+        provider = getattr(settings, "embeddings_provider", "llm_adapter")
+
+        if provider == "llm_adapter":
+            from app.services.llm_adapter_embeddings import LlmAdapterEmbeddings
+
+            embeddings = LlmAdapterEmbeddings(
+                base_url=settings.llm_adapter_url,
+                timeout=getattr(settings, "llm_adapter_timeout", 60.0),
             )
-            
             logger.info(
-                "Proveedor de embeddings OpenAI configurado (optimizado)",
-                model="text-embedding-3-small",
-                max_retries=max_retries,
-                timeout=timeout,
-                chunk_size=1000
+                "Proveedor de embeddings llm-adapter configurado",
+                url=settings.llm_adapter_url,
+                expected_dim=getattr(settings, "embeddings_dim", 1024),
             )
-            
             return embeddings
-            
-        except Exception as e:
-            logger.error(
-                "Error configurando proveedor de embeddings",
-                error=str(e),
-                provider="OpenAI"
-            )
-            raise ConfigurationError(
-                f"Error configurando OpenAI Embeddings: {str(e)}",
-                details={"provider": "OpenAI", "error": str(e)}
-            )
+
+        if provider == "openai":
+            try:
+                from langchain_openai import OpenAIEmbeddings
+
+                if not settings.openai_api_key or "placeholder" in settings.openai_api_key.lower():
+                    raise ConfigurationError(
+                        "embeddings_provider='openai' requiere OPENAI_API_KEY válida",
+                        details={"required_env": "OPENAI_API_KEY"},
+                    )
+
+                embeddings = OpenAIEmbeddings(
+                    api_key=settings.openai_api_key,
+                    model="text-embedding-3-small",
+                    max_retries=getattr(settings, "openai_max_retries", 2),
+                    request_timeout=getattr(settings, "openai_timeout", 10.0),
+                    show_progress_bar=False,
+                    chunk_size=1000,
+                )
+                logger.info(
+                    "Proveedor de embeddings OpenAI configurado",
+                    model="text-embedding-3-small",
+                )
+                return embeddings
+
+            except ConfigurationError:
+                raise
+            except Exception as e:
+                logger.error("Error configurando OpenAI Embeddings", error=str(e))
+                raise ConfigurationError(
+                    f"Error configurando OpenAI Embeddings: {str(e)}",
+                    details={"provider": "openai", "error": str(e)},
+                )
+
+        raise ConfigurationError(
+            f"embeddings_provider desconocido: {provider}",
+            details={"valid": ["llm_adapter", "openai"]},
+        )
     
     async def embed_query(self, text: str) -> List[float]:
         """
