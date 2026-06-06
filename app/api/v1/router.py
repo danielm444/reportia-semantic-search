@@ -439,7 +439,7 @@ async def api_info() -> Dict[str, Any]:
             "info": {"path": "/v1/info", "method": "GET"},
         },
         "search_capabilities": {
-            "max_results": 20,
+            "max_results": 200,
             "max_query_length": 1000,
             "filters": True,
             "score_threshold": True,

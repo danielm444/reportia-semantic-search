@@ -21,9 +21,9 @@ class SearchRequest(BaseModel):
 
     top_k: int = Field(
         default=3,
-        description="Número de resultados a retornar",
+        description="Número de resultados a retornar (hasta 200: la selección de tablas pide ~50 seeds — ADR-0049).",
         ge=1,
-        le=20,
+        le=200,
         examples=[3]
     )
 
