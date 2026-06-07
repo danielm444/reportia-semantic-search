@@ -54,6 +54,8 @@ services:
       - EMBEDDINGS_PROVIDER=${EMBEDDINGS_PROVIDER:-llm_adapter}
       - EMBEDDINGS_DIM=${EMBEDDINGS_DIM:-1024}
       - LLM_ADAPTER_URL=${LLM_ADAPTER_URL:-http://reportia-llm-adapter:8003}
+      # Para EMBEDDINGS_PROVIDER=openai (embedding cloud, sin TEI). Passthrough.
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
       # Qdrant
       - QDRANT_URL=${QDRANT_URL:-http://reportia-qdrant:6333}
       - QDRANT_API_KEY=${QDRANT_API_KEY:-}
