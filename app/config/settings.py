@@ -30,8 +30,17 @@ class Settings(BaseSettings):
         description="Orígenes permitidos para CORS (separados por comas)",
     )
 
-    # OpenAI Configuration
-    openai_api_key: str = Field(..., description="Clave API de OpenAI")
+    # Embeddings (ADR-0049): por defecto se delega en el llm-adapter de ReportIA
+    # (regla `llm-prompting` #4, "única puerta a inferencia"). El modelo activo lo
+    # decide el llm-adapter (catálogo `embedding_model`, ADR-0047; default TEI local
+    # opt-in). 'openai' queda como proveedor alternativo.
+    embeddings_provider: str = Field(default="llm_adapter", description="Proveedor de embeddings: 'llm_adapter' (default) u 'openai'")
+    embeddings_dim: int = Field(default=1024, description="Dimensión del vector del modelo activo (bge-m3=1024). Debe coincidir con la colección Qdrant.")
+    llm_adapter_url: str = Field(default="http://reportia-llm-adapter:8003", description="URL del llm-adapter para embeber (ADR-0049)")
+    llm_adapter_timeout: float = Field(default=60.0, description="Timeout para requests al llm-adapter (segundos)")
+
+    # OpenAI Configuration (solo si embeddings_provider='openai')
+    openai_api_key: str = Field(default="", description="Clave API de OpenAI (solo si embeddings_provider='openai')")
     openai_timeout: float = Field(default=10.0, description="Timeout para requests a OpenAI (segundos)")
     openai_max_retries: int = Field(default=2, description="Máximo número de reintentos para OpenAI")
     openai_max_concurrent: int = Field(default=5, description="Máximo requests concurrentes a OpenAI")
@@ -95,9 +104,9 @@ class Settings(BaseSettings):
             import warnings
             warnings.warn("Usando clave API de ejemplo. Cambiar en producción.")
 
-        if 'placeholder' in self.openai_api_key.lower():
+        if self.embeddings_provider == 'openai' and 'placeholder' in self.openai_api_key.lower():
             import warnings
-            warnings.warn("Usando clave OpenAI de ejemplo. Configurar clave real.")
+            warnings.warn("embeddings_provider='openai' pero OPENAI_API_KEY es de ejemplo. Configurar clave real.")
 
 
 # Instancia global de configuración

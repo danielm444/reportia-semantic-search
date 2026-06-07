@@ -54,8 +54,11 @@ async def lifespan(app: FastAPI):
                 collection_exists=qdrant_health.get("collection_exists"),
             )
             if not qdrant_health.get("collection_exists"):
-                qdrant_service.ensure_collection(vector_size=1536)
-                logger.info("Colección creada exitosamente")
+                # ADR-0049: la dimensión la fija el modelo activo del llm-adapter
+                # (bge-m3 = 1024), no un literal. Cambiar de modelo ⇒ recrear la
+                # colección con la nueva dim (ADR-0047 C3).
+                qdrant_service.ensure_collection(vector_size=settings.embeddings_dim)
+                logger.info("Colección creada exitosamente", vector_size=settings.embeddings_dim)
         else:
             logger.warning(
                 "Conexión a Qdrant no disponible; las búsquedas pueden fallar",

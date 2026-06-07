@@ -65,7 +65,7 @@ class SearchService:
         self,
         embedding_service: Optional[EmbeddingService] = None,
         qdrant_service: Optional[QdrantService] = None,
-        vector_size: int = 1536
+        vector_size: Optional[int] = None
     ):
         """
         Inicializa el servicio de búsqueda.
@@ -73,15 +73,17 @@ class SearchService:
         Args:
             embedding_service: Servicio de embeddings personalizado (opcional)
             qdrant_service: Servicio de Qdrant personalizado (opcional)
-            vector_size: Dimensión de los vectores de la colección
+            vector_size: Dimensión de los vectores de la colección. Si es None,
+                se toma ``settings.embeddings_dim`` (ADR-0049: la fija el modelo
+                activo del llm-adapter, bge-m3 = 1024).
         """
         self.embedding_service = embedding_service or get_embedding_service()
         self.qdrant_service = qdrant_service or get_qdrant_service()
-        self.vector_size = vector_size
+        self.vector_size = vector_size if vector_size is not None else settings.embeddings_dim
 
         # Asegurar que la colección existe
         try:
-            self.qdrant_service.ensure_collection(vector_size=vector_size)
+            self.qdrant_service.ensure_collection(vector_size=self.vector_size)
         except Exception as e:
             logger.warning(
                 "No se pudo crear colección durante inicialización",

@@ -43,7 +43,7 @@ LABEL version="1.0.0"
 # Variables de entorno para runtime
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
-    PATH="/root/.local/bin:$PATH" \
+    PATH="/home/menuapi/.local/bin:$PATH" \
     PYTHONPATH="/app:$PYTHONPATH"
 
 # Instalar dependencias mínimas del sistema
@@ -52,15 +52,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean
 
-# Crear usuario no-root para seguridad
-RUN groupadd -r menuapi && useradd -r -g menuapi menuapi
+# Crear usuario no-root para seguridad (home explícito para pip --user)
+RUN groupadd -r menuapi && useradd -r -g menuapi -m -d /home/menuapi menuapi
 
 # Crear directorios necesarios
 RUN mkdir -p /app /data/chroma_db && \
     chown -R menuapi:menuapi /app /data
 
-# Copiar dependencias Python desde builder
-COPY --from=builder /root/.local /root/.local
+# Copiar dependencias Python desde builder (accesibles por menuapi)
+COPY --from=builder /root/.local /home/menuapi/.local
+RUN chown -R menuapi:menuapi /home/menuapi/.local
 
 # Establecer directorio de trabajo
 WORKDIR /app
