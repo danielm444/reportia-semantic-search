@@ -69,8 +69,10 @@ WORKDIR /app
 # Copiar código de la aplicación
 COPY --chown=menuapi:menuapi . .
 
-# Crear archivo .env por defecto si no existe
-RUN if [ ! -f .env ]; then cp .env.example .env; fi
+# La config se inyecta en runtime vía variables de entorno (docker-compose
+# `environment:`); pydantic BaseSettings las lee directo, no hace falta un `.env`
+# baked en la imagen. Se eliminó el paso `cp .env.example .env`: rompía el build
+# (exit 1) porque `.env.example` no está en el contexto de build.
 
 # Cambiar a usuario no-root
 USER menuapi
